@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voronoi &amp; Delaunay Lab // voronoi-lab.slippylabs.com</title>
+<meta name="description" content="Place points and watch the Delaunay triangulation and its dual Voronoi diagram build themselves — with Lloyd relaxation, area colouring, a live correctness check, and SVG export. Runs entirely in your browser.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://voronoi-lab.slippylabs.com/">
+<meta property="og:title" content="Voronoi &amp; Delaunay Lab // voronoi-lab.slippylabs.com">
+<meta property="og:description" content="Place points and watch the Delaunay triangulation and its dual Voronoi diagram build themselves — with Lloyd relaxation, area colouring, a live correctness check, and SVG export. Runs entirely in your browser.">
+<meta property="og:image" content="https://voronoi-lab.slippylabs.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Voronoi &amp; Delaunay Lab // voronoi-lab.slippylabs.com">
+<meta name="twitter:description" content="Place points and watch the Delaunay triangulation and its dual Voronoi diagram build themselves — with Lloyd relaxation, area colouring, a live correctness check, and SVG export. Runs entirely in your browser.">
+<meta name="twitter:image" content="https://voronoi-lab.slippylabs.com/og-image.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2234%22%20r%3D%2222%22%20fill%3D%22%231c8a52%22%20stroke%3D%22%2339ff8f%22%20stroke-width%3D%222%22%2F%3E%3Ccircle%20cx%3D%2220%22%20cy%3D%2216%22%20r%3D%228%22%20fill%3D%22%231c8a52%22%20stroke%3D%22%2339ff8f%22%20stroke-width%3D%222%22%2F%3E%3Ccircle%20cx%3D%2244%22%20cy%3D%2216%22%20r%3D%228%22%20fill%3D%22%231c8a52%22%20stroke%3D%22%2339ff8f%22%20stroke-width%3D%222%22%2F%3E%3C%2Fsvg%3E">
+<meta name="theme-color" content="#050b10">
+<link rel="stylesheet" href="style.css?v=1">
+<script>/* perf-lite: drop blend/blur effects on low-power devices. ?fx=lite or ?fx=full to override (persisted). */
+(function(){try{var k="slippy-fx",m=location.search.match(/[?&]fx=(lite|full)/),v=m?m[1]:localStorage.getItem(k);if(m)localStorage.setItem(k,v);if(v==="lite"||(v!=="full"&&(navigator.hardwareConcurrency||8)<=2))document.documentElement.classList.add("perf-lite");}catch(e){}})();</script>
+</head>
+<body>
+
+<div class="starfield"></div>
+<div class="scanlines"></div>
+
+<main class="page-wrap">
+  <div class="hud-panel wide">
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+
+    <div class="callsign-row">
+      <div class="toad-avatar-wrap">
+        <svg class="toad-avatar" width="46" height="46" viewBox="0 0 64 64">
+          <circle cx="32" cy="34" r="22" fill="#1c8a52" stroke="#39ff8f" stroke-width="2"/>
+          <circle cx="20" cy="16" r="8" fill="#1c8a52" stroke="#39ff8f" stroke-width="2"/>
+          <circle cx="44" cy="16" r="8" fill="#1c8a52" stroke="#39ff8f" stroke-width="2"/>
+          <circle cx="20" cy="16" r="3.5" fill="#050b10"/>
+          <circle cx="44" cy="16" r="3.5" fill="#050b10"/>
+          <ellipse cx="24" cy="32" rx="4.5" ry="5.5" fill="#050b10"/>
+          <ellipse cx="40" cy="32" rx="4.5" ry="5.5" fill="#050b10"/>
+          <circle cx="24" cy="30" r="1.4" fill="#39ff8f"/>
+          <circle cx="40" cy="30" r="1.4" fill="#39ff8f"/>
+          <path d="M22 42 Q32 48 42 42" stroke="#050b10" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+        <div class="lock-reticle"></div>
+      </div>
+      <span class="callsign">Workshop Division // Tool</span>
+      <div class="nav-links">
+        <a href="https://projects.slippylabs.com/" class="logout-link">← Archive</a>
+      </div>
+    </div>
+
+
+    <h1>VORONOI &amp; DELAUNAY LAB</h1>
+    <p class="subtitle">Two pictures of the same thing. The Voronoi diagram answers &ldquo;which point is nearest&rdquo;; the Delaunay triangulation is its dual, and it is the triangulation that avoids thin slivers &mdash; which is why mesh generators want it.</p>
+
+    <div class="vl-controls">
+      <div class="tool-field-row">
+        <label class="tool-field-label" for="count-slider">Random sites</label>
+        <div class="tool-slider-row">
+          <input type="range" id="count-slider" min="3" max="400" value="60">
+          <span class="vl-slider-value" id="count-value">60</span>
+        </div>
+      </div>
+      <div class="tool-field-row">
+        <label class="tool-field-label" for="pattern-select">Scatter pattern</label>
+        <select class="tool-select" id="pattern-select">
+          <option value="uniform">Uniform random</option>
+          <option value="clustered">Clustered</option>
+          <option value="grid">Perfect grid — degenerate on purpose</option>
+          <option value="ring">Ring</option>
+          <option value="poisson">Blue noise (rejection)</option>
+        </select>
+      </div>
+      <div class="tool-field-row">
+        <label class="tool-field-label" for="colour-select">Cell colour</label>
+        <select class="tool-select" id="colour-select">
+          <option value="area">By area</option>
+          <option value="sides">By number of sides</option>
+          <option value="none">None</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="tool-controls">
+      <button class="tool-btn" id="scatter-btn">Scatter</button>
+      <button class="tool-btn ghost" id="relax-btn">Relax Once</button>
+      <button class="tool-btn ghost" id="relax10-btn">Relax &times;10</button>
+      <button class="tool-btn ghost" id="clear-btn">Clear</button>
+      <button class="tool-btn ghost" id="svg-btn">Download SVG</button>
+      <button class="tool-btn ghost" id="png-btn">Download PNG</button>
+      <a id="download-link" hidden></a>
+    </div>
+
+    <div class="tool-checks">
+      <label class="tool-check"><input type="checkbox" id="voronoi-check" checked> Voronoi cells</label>
+      <label class="tool-check"><input type="checkbox" id="delaunay-check"> Delaunay triangles</label>
+      <label class="tool-check"><input type="checkbox" id="circles-check"> Circumcircles</label>
+      <label class="tool-check"><input type="checkbox" id="sites-check" checked> Sites</label>
+    </div>
+
+    <p class="tool-note">
+      Click to add a site, drag one to move it, shift-click to remove it. <strong>Relax</strong> runs
+      Lloyd's algorithm: every site jumps to the centre of its own cell. Repeat it and a random
+      scatter turns into a honeycomb, because the hexagon is what a Voronoi cell wants to be.
+    </p>
+
+    <div class="vl-canvas-wrap">
+      <canvas id="plane" width="900" height="560"></canvas>
+    </div>
+
+    <div class="net-grid" id="stat-host"></div>
+    <p class="tool-note" id="check-note"></p>
+
+    <p class="tool-note">
+      The triangulation is built by <strong>Bowyer&ndash;Watson insertion</strong>: add a point,
+      delete every triangle whose circumcircle contains it, and fill the hole that leaves. The
+      defining property is that no site ends up inside any triangle's circumcircle &mdash; turn on
+      Circumcircles and you can watch it hold. The page checks it after every change, along with
+      Euler's formula for a planar graph, and says so above.
+    </p>
+    <p class="tool-note">
+      Cells are built as an intersection of half-planes: start with the rectangle, then cut with the
+      perpendicular bisector between the site and each of its Delaunay neighbours. Cutting against
+      neighbours alone is enough &mdash; a Voronoi edge only ever separates Delaunay neighbours
+      &mdash; and the page verifies that shortcut against the brute-force version, which cuts
+      against every other site, whenever there are few enough sites to do it live.
+    </p>
+    <div class="comm-window">
+      <div class="comm-portrait">
+        <svg width="36" height="36" viewBox="0 0 64 64">
+          <circle cx="32" cy="34" r="22" fill="#1c8a52" stroke="#39ff8f" stroke-width="2"/>
+          <circle cx="20" cy="16" r="8" fill="#1c8a52" stroke="#39ff8f" stroke-width="2"/>
+          <circle cx="44" cy="16" r="8" fill="#1c8a52" stroke="#39ff8f" stroke-width="2"/>
+          <circle cx="20" cy="16" r="3.5" fill="#050b10"/>
+          <circle cx="44" cy="16" r="3.5" fill="#050b10"/>
+          <ellipse cx="24" cy="32" rx="4.5" ry="5.5" fill="#050b10"/>
+          <ellipse cx="40" cy="32" rx="4.5" ry="5.5" fill="#050b10"/>
+          <circle cx="24" cy="30" r="1.4" fill="#39ff8f"/>
+          <circle cx="40" cy="30" r="1.4" fill="#39ff8f"/>
+          <path d="M22 42 Q32 48 42 42" stroke="#050b10" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="comm-body">
+        <div class="comm-label"><span class="dot"></span> Incoming Transmission &mdash; Slippy</div>
+        <p>&quot;Every cell is the set of places closer to its own site than to any other. That one sentence is the whole diagram.&quot;</p>
+      </div>
+    </div>
+
+    <a href="https://projects.slippylabs.com/" class="hud-btn">← Back to Archive</a>
+  </div>
+</main>
+
+
+<script>
+/* ---- geometry --------------------------------------------------------------
+   Delaunay by Bowyer-Watson insertion, Voronoi as an intersection of
+   half-planes. The two are duals, and the code keeps them independent on
+   purpose: the Voronoi cells can be built without consulting the triangulation
+   at all (cut against every other site), which is slow but obviously correct,
+   and the page cross-checks the fast path against it live. */
+
+const EPS = 1e-12;
+
+function circumcircle(ax, ay, bx, by, cx, cy) {
+  const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+  if (Math.abs(d) < 1e-14) return null;        // collinear: no finite circle
+  const a2 = ax * ax + ay * ay;
+  const b2 = bx * bx + by * by;
+  const c2 = cx * cx + cy * cy;
+  const x = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d;
+  const y = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d;
+  const dx = ax - x;
+  const dy = ay - y;
+  return { x, y, r2: dx * dx + dy * dy };
+}
+
+function boundsOf(points, pad = 0) {
+  if (!points.length) return { minX: -1, minY: -1, maxX: 1, maxY: 1 };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+}
+
+/* Duplicate sites are removed rather than tolerated: two points in the same
+   place have no bisector between them, so the diagram is undefined and the
+   triangulation would grow zero-area triangles. */
+function dedupe(points, tol = 1e-9) {
+  const out = [];
+  for (const p of points) {
+    if (!out.some((q) => Math.abs(q.x - p.x) <= tol && Math.abs(q.y - p.y) <= tol)) out.push(p);
+  }
+  return out;
+}
+
+function delaunay(points) {
+  const n = points.length;
+  if (n < 3) return [];
+  const b = boundsOf(points);
+  const dx = Math.max(b.maxX - b.minX, 1e-9);
+  const dy = Math.max(b.maxY - b.minY, 1e-9);
+  const dmax = Math.max(dx, dy) * 1000;
+  const mx = (b.minX + b.maxX) / 2;
+  const my = (b.minY + b.maxY) / 2;
+  // a triangle guaranteed to contain every point; its vertices are dropped at the end
+  const pts = points.concat([
+    { x: mx - dmax, y: my - dmax },
+    { x: mx + dmax, y: my - dmax },
+    { x: mx, y: my + dmax },
+  ]);
+  let tris = [[n, n + 1, n + 2]];
+
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    const good = [];
+    const edges = new Map();
+    for (const t of tris) {
+      const cc = circumcircle(pts[t[0]].x, pts[t[0]].y, pts[t[1]].x, pts[t[1]].y,
+        pts[t[2]].x, pts[t[2]].y);
+      const ddx = p.x - (cc ? cc.x : 0);
+      const ddy = p.y - (cc ? cc.y : 0);
+      const inside = cc && ddx * ddx + ddy * ddy <= cc.r2 * (1 + 1e-12);
+      if (!inside) { good.push(t); continue; }
+      // the three edges of a deleted triangle; those shared by two deleted
+      // triangles are interior to the hole and must not be rebuilt
+      for (const [a, c] of [[t[0], t[1]], [t[1], t[2]], [t[2], t[0]]]) {
+        const key = a < c ? `${a},${c}` : `${c},${a}`;
+        edges.set(key, (edges.get(key) || 0) + 1);
+      }
+    }
+    tris = good;
+    for (const [key, count] of edges) {
+      if (count !== 1) continue;
+      const [a, c] = key.split(',').map(Number);
+      tris.push([a, c, i]);
+    }
+  }
+  // drop everything still touching the super-triangle
+  return tris.filter((t) => t[0] < n && t[1] < n && t[2] < n)
+    .map((t) => {
+      // a consistent counter-clockwise winding makes areas and normals simple
+      const [i, j, k] = t;
+      const cross = (points[j].x - points[i].x) * (points[k].y - points[i].y)
+        - (points[j].y - points[i].y) * (points[k].x - points[i].x);
+      return cross < 0 ? [i, k, j] : [i, j, k];
+    });
+}
+
+/* Which sites share a Delaunay edge with which. */
+function neighbourSets(points, tris) {
+  const nb = points.map(() => new Set());
+  for (const [a, b, c] of tris) {
+    nb[a].add(b); nb[a].add(c);
+    nb[b].add(a); nb[b].add(c);
+    nb[c].add(a); nb[c].add(b);
+  }
+  return nb;
+}
+
+/* Sutherland-Hodgman clip of a convex polygon by the half-plane of points at
+   least as close to `site` as to `other` — that is, the side of their
+   perpendicular bisector that the site is on. */
+function clipHalfPlane(poly, site, other) {
+  const mx = (site.x + other.x) / 2;
+  const my = (site.y + other.y) / 2;
+  const nx = other.x - site.x;
+  const ny = other.y - site.y;
+  const side = (p) => (p.x - mx) * nx + (p.y - my) * ny;   // <= 0 keeps the site's side
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const bb = poly[(i + 1) % poly.length];
+    const da = side(a);
+    const db = side(bb);
+    if (da <= 0) out.push(a);
+    if ((da < 0 && db > 0) || (da > 0 && db < 0)) {
+      const t = da / (da - db);
+      out.push({ x: a.x + t * (bb.x - a.x), y: a.y + t * (bb.y - a.y) });
+    }
+  }
+  return out;
+}
+
+function rectPolygon(b) {
+  return [
+    { x: b.minX, y: b.minY }, { x: b.maxX, y: b.minY },
+    { x: b.maxX, y: b.maxY }, { x: b.minX, y: b.maxY },
+  ];
+}
+
+/* Voronoi cells clipped to `bounds`. Pass neighbour sets for the fast path
+   (a Voronoi edge can only separate Delaunay neighbours); pass null to cut
+   against every other site, which needs no triangulation to be correct and is
+   what the fast path is checked against. */
+function voronoiCells(points, bounds, neighbours = null) {
+  return points.map((site, i) => {
+    let poly = rectPolygon(bounds);
+    const others = neighbours ? neighbours[i] : points.keys();
+    for (const j of others) {
+      if (j === i) continue;
+      poly = clipHalfPlane(poly, site, points[j]);
+      if (poly.length < 3) break;
+    }
+    return poly;
+  });
+}
+
+function polygonArea(poly) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return Math.abs(a) / 2;
+}
+
+function polygonCentroid(poly) {
+  let a = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    const f = p.x * q.y - q.x * p.y;
+    a += f;
+    cx += (p.x + q.x) * f;
+    cy += (p.y + q.y) * f;
+  }
+  if (Math.abs(a) < 1e-15) {
+    // degenerate sliver: fall back to the average of the vertices
+    return {
+      x: poly.reduce((s, p) => s + p.x, 0) / poly.length,
+      y: poly.reduce((s, p) => s + p.y, 0) / poly.length,
+    };
+  }
+  a *= 0.5;
+  return { x: cx / (6 * a), y: cy / (6 * a) };
+}
+
+/* One round of Lloyd relaxation: every site moves to the centroid of its own
+   cell. Repeat and the arrangement converges towards a centroidal Voronoi
+   tessellation, which in the plane is a hexagonal packing. */
+function lloydStep(points, bounds) {
+  const tris = delaunay(points);
+  const cells = voronoiCells(points, bounds, tris.length ? neighbourSets(points, tris) : null);
+  return points.map((p, i) => (cells[i].length >= 3 ? polygonCentroid(cells[i]) : p));
+}
+
+/* The definition, checked directly: no site may lie inside the circumcircle of
+   any triangle. The tolerance is relative to the circle, because four points on
+   a common circle are exactly on the boundary and floating point will put them
+   a hair either side. */
+function emptyCircumcircleViolations(points, tris, tol = 1e-9) {
+  const bad = [];
+  for (const t of tris) {
+    const cc = circumcircle(points[t[0]].x, points[t[0]].y, points[t[1]].x, points[t[1]].y,
+      points[t[2]].x, points[t[2]].y);
+    if (!cc) { bad.push({ tri: t, reason: 'degenerate triangle' }); continue; }
+    const slack = cc.r2 * tol + tol;
+    for (let i = 0; i < points.length; i++) {
+      if (t.includes(i)) continue;
+      const dx = points[i].x - cc.x;
+      const dy = points[i].y - cc.y;
+      if (dx * dx + dy * dy < cc.r2 - slack) {
+        bad.push({ tri: t, site: i, depth: cc.r2 - (dx * dx + dy * dy) });
+      }
+    }
+  }
+  return bad;
+}
+
+/* Euler's formula for a connected planar graph: V - E + F = 2, counting the
+   outer face. For a triangulation of points in general position that pins the
+   edge count exactly, so it is a cheap structural check on the whole mesh. */
+function eulerCheck(points, tris) {
+  const edges = new Set();
+  for (const [a, b, c] of tris) {
+    for (const [i, j] of [[a, b], [b, c], [c, a]]) edges.add(i < j ? `${i},${j}` : `${j},${i}`);
+  }
+  const V = points.length;
+  const E = edges.size;
+  const F = tris.length + 1;
+  return { V, E, F, chi: V - E + F, ok: V - E + F === 2 };
+}
+
+/* Drop vertices that sit on the straight line between their neighbours. Two
+   correct routes to the same cell can disagree about whether a collinear point
+   is a vertex: the brute-force pass cuts against every site, and a site exactly
+   opposite a co-circular neighbour (every interior point of a square grid has
+   one) adds a bisector that touches the cell along an existing edge. Same
+   polygon, one more corner. Comparing raw vertex lists would call that a
+   mismatch, which is how a correct diagram ends up flagged as broken. */
+function simplifyPolygon(poly, tol = 1e-9) {
+  const pts = [];
+  for (const p of poly) {
+    const last = pts[pts.length - 1];
+    if (!last || Math.abs(last.x - p.x) > tol || Math.abs(last.y - p.y) > tol) pts.push(p);
+  }
+  while (pts.length > 1) {
+    const a = pts[0];
+    const b = pts[pts.length - 1];
+    if (Math.abs(a.x - b.x) <= tol && Math.abs(a.y - b.y) <= tol) pts.pop();
+    else break;
+  }
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const prev = pts[(i - 1 + pts.length) % pts.length];
+    const cur = pts[i];
+    const next = pts[(i + 1) % pts.length];
+    const cross = (cur.x - prev.x) * (next.y - prev.y) - (cur.y - prev.y) * (next.x - prev.x);
+    const scale = Math.hypot(next.x - prev.x, next.y - prev.y);
+    if (Math.abs(cross) > tol * Math.max(1, scale)) out.push(cur);
+  }
+  return out.length >= 3 ? out : pts;
+}
+
+function polygonsClose(a, b, tol = 1e-6) {
+  const pa = simplifyPolygon(a);
+  const pb = simplifyPolygon(b);
+  if (pa.length !== pb.length) return false;
+  if (Math.abs(polygonArea(a) - polygonArea(b)) > tol * Math.max(1, polygonArea(a))) return false;
+  // same cycle, possibly rotated
+  for (let shift = 0; shift < pa.length; shift++) {
+    let all = true;
+    for (let i = 0; i < pa.length; i++) {
+      const p = pa[i];
+      const q = pb[(i + shift) % pb.length];
+      if (Math.abs(p.x - q.x) > tol || Math.abs(p.y - q.y) > tol) { all = false; break; }
+    }
+    if (all) return true;
+  }
+  return false;
+}
+
+/* ---- scatter patterns ---- */
+
+function scatter(kind, count, bounds, rnd) {
+  // Every pattern ends with a clamp: a site outside the rectangle has no cell
+  // to be inside, which makes nonsense of the diagram and of Lloyd relaxation.
+  const clamp = (p) => ({
+    x: Math.min(bounds.maxX, Math.max(bounds.minX, p.x)),
+    y: Math.min(bounds.maxY, Math.max(bounds.minY, p.y)),
+  });
+  const w = bounds.maxX - bounds.minX;
+  const h = bounds.maxY - bounds.minY;
+  const pts = [];
+  const rx = () => bounds.minX + rnd() * w;
+  const ry = () => bounds.minY + rnd() * h;
+  if (kind === 'clustered') {
+    const clusters = Math.max(2, Math.round(Math.sqrt(count) / 1.5));
+    const centres = Array.from({ length: clusters }, () => ({ x: rx(), y: ry() }));
+    for (let i = 0; i < count; i++) {
+      const c = centres[i % clusters];
+      const r = (rnd() + rnd()) * Math.min(w, h) * 0.06;
+      const th = rnd() * Math.PI * 2;
+      pts.push({ x: c.x + r * Math.cos(th), y: c.y + r * Math.sin(th) });
+    }
+  } else if (kind === 'grid') {
+    // Every set of four neighbours is co-circular, which is exactly the
+    // degenerate case a triangulator is most likely to get wrong.
+    const cols = Math.max(2, Math.round(Math.sqrt(count * w / h)));
+    const rows = Math.max(2, Math.round(count / cols));
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        pts.push({
+          x: bounds.minX + (w * (i + 0.5)) / cols,
+          y: bounds.minY + (h * (j + 0.5)) / rows,
+        });
+      }
+    }
+  } else if (kind === 'ring') {
+    const cx = (bounds.minX + bounds.maxX) / 2;
+    const cy = (bounds.minY + bounds.maxY) / 2;
+    const rad = Math.min(w, h) * 0.38;
+    for (let i = 0; i < count; i++) {
+      const th = (i / count) * Math.PI * 2;
+      const jitter = 1 + (rnd() - 0.5) * 0.06;
+      pts.push({ x: cx + rad * jitter * Math.cos(th), y: cy + rad * jitter * Math.sin(th) });
+    }
+  } else if (kind === 'poisson') {
+    const minDist = Math.sqrt((w * h) / count) * 0.72;
+    let guard = 0;
+    while (pts.length < count && guard < count * 400) {
+      guard++;
+      const p = { x: rx(), y: ry() };
+      if (pts.every((q) => Math.hypot(q.x - p.x, q.y - p.y) >= minDist)) pts.push(p);
+    }
+  } else {
+    for (let i = 0; i < count; i++) pts.push({ x: rx(), y: ry() });
+  }
+  return dedupe(pts.map(clamp));
+}
+
+/* ==== UI ==== */
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('plane');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+const PAD = 14;
+let bounds = { minX: PAD, minY: PAD, maxX: canvas.width - PAD, maxY: canvas.height - PAD };
+let sites = [];
+let tris = [];
+let cells = [];
+let stats = null;
+let dragIndex = -1;
+
+function rebuild() {
+  sites = dedupe(sites);
+  tris = delaunay(sites);
+  const nb = tris.length ? neighbourSets(sites, tris) : null;
+  cells = voronoiCells(sites, bounds, nb);
+
+  // live self-checks, the same two the page claims in its copy
+  const violations = emptyCircumcircleViolations(sites, tris);
+  const euler = eulerCheck(sites, tris);
+  let dualOk = null;
+  if (sites.length >= 2 && sites.length <= 200) {
+    const brute = voronoiCells(sites, bounds, null);
+    dualOk = cells.every((c, i) => polygonsClose(c, brute[i], 1e-6));
+  }
+  stats = { violations, euler, dualOk };
+  draw();
+  renderStats();
+}
+
+/* ---- drawing ---- */
+
+function areaColour(t) {
+  // green -> orange ramp, dark for the smallest cells
+  const r = Math.round(30 + 225 * t);
+  const g = Math.round(255 - 110 * t);
+  const b = Math.round(143 - 95 * t);
+  return `rgba(${r}, ${g}, ${b}, 0.28)`;
+}
+const SIDE_COLOURS = {
+  3: 'rgba(255,70,85,0.30)', 4: 'rgba(255,145,48,0.30)', 5: 'rgba(255,224,102,0.28)',
+  6: 'rgba(57,255,143,0.26)', 7: 'rgba(111,180,255,0.28)', 8: 'rgba(192,140,255,0.30)',
+};
+
+function draw() {
+  ctx.fillStyle = '#04070a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const mode = $('colour-select').value;
+  const areas = cells.map(polygonArea);
+  const maxA = Math.max(...areas, 1e-9);
+  const minA = Math.min(...areas.filter((a) => a > 0), maxA);
+
+  if ($('voronoi-check').checked) {
+    cells.forEach((poly, i) => {
+      if (poly.length < 3) return;
+      ctx.beginPath();
+      poly.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.closePath();
+      if (mode === 'area') {
+        const t = maxA > minA ? (areas[i] - minA) / (maxA - minA) : 0;
+        ctx.fillStyle = areaColour(t);
+        ctx.fill();
+      } else if (mode === 'sides') {
+        ctx.fillStyle = SIDE_COLOURS[Math.min(8, poly.length)] || 'rgba(217,251,232,0.22)';
+        ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(57,255,143,0.75)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+  }
+
+  if ($('delaunay-check').checked) {
+    ctx.strokeStyle = 'rgba(255,145,48,0.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const [a, b, c] of tris) {
+      ctx.moveTo(sites[a].x, sites[a].y);
+      ctx.lineTo(sites[b].x, sites[b].y);
+      ctx.lineTo(sites[c].x, sites[c].y);
+      ctx.closePath();
+    }
+    ctx.stroke();
+  }
+
+  if ($('circles-check').checked) {
+    ctx.strokeStyle = 'rgba(111,180,255,0.35)';
+    ctx.lineWidth = 0.7;
+    for (const t of tris) {
+      const cc = circumcircle(sites[t[0]].x, sites[t[0]].y, sites[t[1]].x, sites[t[1]].y,
+        sites[t[2]].x, sites[t[2]].y);
+      if (!cc) continue;
+      const r = Math.sqrt(cc.r2);
+      if (r > 4000) continue;
+      ctx.beginPath();
+      ctx.arc(cc.x, cc.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  if ($('sites-check').checked) {
+    ctx.fillStyle = '#d9fbe8';
+    for (const p of sites) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function renderStats() {
+  const areas = cells.map(polygonArea);
+  const total = areas.reduce((s, a) => s + a, 0);
+  const sides = cells.map((c) => c.length).filter((n) => n >= 3);
+  const mean = areas.length ? total / areas.length : 0;
+  const hex = sides.filter((n) => n === 6).length;
+  const tiles = [
+    ['Sites', String(sites.length)],
+    ['Triangles', String(tris.length)],
+    ['Edges', String(stats ? stats.euler.E : 0)],
+    ['Mean cell area', mean ? mean.toFixed(0) : '—'],
+    ['Six-sided cells', sides.length ? `${Math.round((hex / sides.length) * 100)}%` : '—'],
+    ['Area covered', total ? `${((total / ((bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY))) * 100).toFixed(1)}%` : '—'],
+  ];
+  $('stat-host').innerHTML = tiles.map(([label, value]) => `
+    <div class="net-tile">
+      <div class="net-tile-label">${label}</div>
+      <div class="net-tile-value mono">${value}</div>
+    </div>`).join('');
+
+  const note = $('check-note');
+  if (!stats || sites.length < 3) {
+    note.textContent = 'Add at least three sites to triangulate.';
+    return;
+  }
+  const parts = [];
+  parts.push(stats.violations.length === 0
+    ? `<span class="vl-ok">Empty-circumcircle property holds</span> for all ${tris.length} triangles`
+    : `<span class="vl-bad">${stats.violations.length} circumcircle violations</span>`);
+  parts.push(stats.euler.ok
+    ? `Euler check V−E+F = ${stats.euler.chi}`
+    : `<span class="vl-bad">Euler check failed: V−E+F = ${stats.euler.chi}</span>`);
+  if (stats.dualOk !== null) {
+    parts.push(stats.dualOk
+      ? 'cells match the brute-force diagram exactly'
+      : '<span class="vl-bad">cells disagree with the brute-force diagram</span>');
+  } else {
+    parts.push('brute-force cross-check skipped above 200 sites');
+  }
+  note.innerHTML = `${parts.join(' · ')}. Checked after every change.`;
+}
+
+/* ---- interaction ---- */
+
+function canvasPoint(ev) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (ev.clientX - r.left) * (canvas.width / r.width),
+    y: (ev.clientY - r.top) * (canvas.height / r.height),
+  };
+}
+function nearestSite(p, maxDist) {
+  let best = -1;
+  let bestD = maxDist * maxDist;
+  sites.forEach((q, i) => {
+    const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+}
+
+canvas.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault();
+  canvas.setPointerCapture(ev.pointerId);
+  const p = canvasPoint(ev);
+  const hit = nearestSite(p, 12);
+  if (ev.shiftKey) {
+    if (hit >= 0) { sites.splice(hit, 1); rebuild(); }
+    return;
+  }
+  if (hit >= 0) { dragIndex = hit; return; }
+  sites.push(p);
+  rebuild();
+});
+canvas.addEventListener('pointermove', (ev) => {
+  if (dragIndex < 0) return;
+  const p = canvasPoint(ev);
+  sites[dragIndex] = {
+    x: Math.min(bounds.maxX, Math.max(bounds.minX, p.x)),
+    y: Math.min(bounds.maxY, Math.max(bounds.minY, p.y)),
+  };
+  rebuild();
+});
+canvas.addEventListener('pointerup', () => { dragIndex = -1; });
+canvas.addEventListener('pointercancel', () => { dragIndex = -1; });
+
+/* ---- controls ---- */
+
+function doScatter() {
+  const count = Number($('count-slider').value);
+  sites = scatter($('pattern-select').value, count, bounds, Math.random);
+  rebuild();
+}
+$('scatter-btn').addEventListener('click', doScatter);
+$('pattern-select').addEventListener('change', doScatter);
+$('count-slider').addEventListener('input', (e) => {
+  $('count-value').textContent = e.target.value;
+});
+$('count-slider').addEventListener('change', doScatter);
+$('clear-btn').addEventListener('click', () => { sites = []; rebuild(); });
+$('relax-btn').addEventListener('click', () => { sites = lloydStep(sites, bounds); rebuild(); });
+$('relax10-btn').addEventListener('click', () => {
+  let i = 0;
+  const tick = () => {
+    sites = lloydStep(sites, bounds);
+    rebuild();
+    if (++i < 10) requestAnimationFrame(tick);
+  };
+  tick();
+});
+['voronoi-check', 'delaunay-check', 'circles-check', 'sites-check', 'colour-select']
+  .forEach((id) => $(id).addEventListener('change', draw));
+
+/* ---- export ---- */
+
+function toSVG() {
+  const w = canvas.width;
+  const h = canvas.height;
+  const parts = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">`];
+  parts.push(`<rect width="${w}" height="${h}" fill="#04070a"/>`);
+  const mode = $('colour-select').value;
+  const areas = cells.map(polygonArea);
+  const maxA = Math.max(...areas, 1e-9);
+  const minA = Math.min(...areas.filter((a) => a > 0), maxA);
+  if ($('voronoi-check').checked) {
+    cells.forEach((poly, i) => {
+      if (poly.length < 3) return;
+      const d = poly.map((p, k) => `${k ? 'L' : 'M'}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ') + ' Z';
+      let fill = 'none';
+      if (mode === 'area') {
+        const t = maxA > minA ? (areas[i] - minA) / (maxA - minA) : 0;
+        fill = areaColour(t);
+      } else if (mode === 'sides') {
+        fill = SIDE_COLOURS[Math.min(8, poly.length)] || 'rgba(217,251,232,0.22)';
+      }
+      parts.push(`<path d="${d}" fill="${fill}" stroke="#39ff8f" stroke-width="1"/>`);
+    });
+  }
+  if ($('delaunay-check').checked) {
+    for (const [a, b, c] of tris) {
+      const d = `M${sites[a].x.toFixed(2)},${sites[a].y.toFixed(2)} L${sites[b].x.toFixed(2)},${sites[b].y.toFixed(2)} L${sites[c].x.toFixed(2)},${sites[c].y.toFixed(2)} Z`;
+      parts.push(`<path d="${d}" fill="none" stroke="#ff9130" stroke-width="1" stroke-opacity="0.55"/>`);
+    }
+  }
+  if ($('sites-check').checked) {
+    for (const p of sites) {
+      parts.push(`<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="2.6" fill="#d9fbe8"/>`);
+    }
+  }
+  parts.push('</svg>');
+  return parts.join('\n');
+}
+
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = $('download-link');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+$('svg-btn').addEventListener('click', () => {
+  download(new Blob([toSVG()], { type: 'image/svg+xml' }), 'voronoi.svg');
+});
+$('png-btn').addEventListener('click', () => {
+  canvas.toBlob((blob) => download(blob, 'voronoi.png'), 'image/png');
+});
+
+/* ---- headless hook ---- */
+
+window.__voronoi = {
+  delaunay, voronoiCells, neighbourSets, lloydStep, polygonArea, polygonCentroid,
+  emptyCircumcircleViolations, eulerCheck, scatter, dedupe, circumcircle,
+  get sites() { return sites.map((p) => ({ ...p })); },
+  set sites(v) { sites = v.map((p) => ({ ...p })); rebuild(); },
+  get stats() { return { violations: stats.violations.length, euler: stats.euler, dualOk: stats.dualOk }; },
+  get bounds() { return { ...bounds }; },
+  svg: toSVG,
+  relax(n = 1) { for (let i = 0; i < n; i++) sites = lloydStep(sites, bounds); rebuild(); },
+};
+
+/* ---- boot ---- */
+
+$('count-value').textContent = $('count-slider').value;
+doScatter();
+</script>
+<!-- Slippy Deck: floating Slippy TV + jukebox player. Renders nothing unless admin.slippylabs.com/whoami confirms a signed-in account. -->
+<script defer src="https://slippylabs.com/deck/deck.js"></script>
+<!-- Slippy Labs sitewide privacy link. Self-contained on purpose: these sites
+     share no CSS, so it carries its own styles and inherits the page's text
+     colour instead of assuming a palette. position/z-index are load bearing --
+     the HUD theme's .starfield/.scanlines are fixed at z-index 0-1 and would
+     paint straight over an unpositioned footer.
+     The .page-wrap trim below is what keeps the bar on the first screen. -->
+<div class="sl-legal"><a href="https://slippylabs.com/privacy.html">Privacy</a></div>
+<style>
+.sl-legal{box-sizing:border-box;position:relative;z-index:3;height:64px;display:flex;align-items:center;justify-content:center;margin:0;padding:0 12px;font-family:"Consolas","SFMono-Regular",Menlo,Monaco,"Courier New",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.5}
+.sl-legal a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px}
+.sl-legal a:hover,.sl-legal a:focus-visible{text-decoration:underline;opacity:1}
+/* This page centres .page-wrap at min-height:100vh, which would push the bar a
+   whole screen below the fold. Give back exactly the bar height instead of
+   adding a scrollbar to a page that had none. */
+.page-wrap{min-height:calc(100vh - 64px)}
+</style>
+</body>
+</html>
